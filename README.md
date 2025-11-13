@@ -86,7 +86,7 @@ python src/main.py
 Integrante,Rol en el Proyecto
 1. [Ricardo Dominguez Villalobos](https://github.com/dinovillalobos), Responsable del Proyecto y Gestión
 2. [Hernández Larios Omar Emilio](https://github.com/OmarLarios) ,Diseñador de Hechos y Base de Conocimiento
-3. [Apellido, Nombre Completo]() ,Diseñador de Reglas y Condiciones
+3. [Hernández Larios Omar Emilio](https://github.com/OmarLarios) ,Diseñador de Reglas y Condiciones
 4. [Apellido, Nombre Completo]() ,Programador del Solver (Algoritmo IA)
 5. [Apellido, Nombre Completo]() ,"Tester, Verificador y Documentación de Problemas"
 6. [Apellido, Nombre Completo]() ,Redactor de Soporte y Visualización de Soluciones
