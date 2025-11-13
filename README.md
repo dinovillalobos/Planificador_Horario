@@ -85,10 +85,10 @@ python src/main.py
 
 Integrante,Rol en el Proyecto
 1. [Ricardo Dominguez Villalobos](https://github.com/dinovillalobos), Responsable del Proyecto y Gestión
-2. [Hernández Larios Omar Emilio](https://github.com/OmarLarios) ,Diseñador de Hechos y Base de Conocimiento
-3. [Hernández Larios Omar Emilio](https://github.com/OmarLarios) ,Diseñador de Reglas y Condiciones
-4. [Apellido, Nombre Completo]() ,Programador del Solver (Algoritmo IA)
-5. [Apellido, Nombre Completo]() ,"Tester, Verificador y Documentación de Problemas"
+2. [Hernández Larios Omar Emilio](https://github.com/OmarLarios);[Jesus Osvaldo Manriquez Gonzalez](https://github.com/JesusHades) ,[Torres Arroyo Leonardo](https://github.com/leonid4s1/leonid4s1.github.io) ,Diseñador de Hechos y Base de Conocimiento
+3. [Hernández Larios Omar Emilio](https://github.com/OmarLarios) [Jesus Osvaldo Manriquez Gonzalez](https://github.com/JesusHades) ,[Torres Arroyo Leonardo](https://github.com/leonid4s1/leonid4s1.github.io) ,Diseñador de Reglas y Condiciones
+4. [Ricardo Dominguez Villalobos](https://github.com/dinovillalobos), [Duarte Gutierrez Rodrigo Yael](https://github.com/YaelDuarte) ,[Reyes Hernández Axel David](https://github.com/R3y3Zzz) ,Programador del Solver (Algoritmo IA)
+5. [Apellido, Nombre Completo]() ,[]() ,[]() ,"Tester, Verificador y Documentación de Problemas"
 6. [Apellido, Nombre Completo]() ,Redactor de Soporte y Visualización de Soluciones
 
 ## ⚖️ Licencia
