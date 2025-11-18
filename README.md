@@ -76,9 +76,12 @@ python3 -m venv venv
 source venv/bin/activate   # En Linux/macOS
 .\venv\Scripts\activate    # En Windows
 
+#Instalar los requerimentos
 pip install -r requirements.txt
 
+#Correr el programa 
 python src/main.py
+python -m src.main
 ```
 
 ## 🤝 Integrantes del Equipo
