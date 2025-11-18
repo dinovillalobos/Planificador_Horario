@@ -4,24 +4,23 @@ from collections import defaultdict
 import random
 
 # Importar las clases de Hechos (Estado Inicial) y Reglas (Condiciones)
-from .models import KnowledgeBase, ClasePendiente
+from .models import KnowledgeBase, ClasePendiente, Materia, Aula, Profesor, Grupo
 from .rules import es_asignacion_valida, calcular_puntaje_horario 
 
-# Define la estructura de la asignación final que maneja el solver
-# Usaremos un diccionario con las IDs de los objetos para facilitar la búsqueda en la KB
-AsignacionFinal = Dict[str, str] # { 'id_materia': 'M101', 'id_profesor': 'P001', ...}
+# Alias de tipos
+AsignacionFinal = Dict[str, any] 
 
 
 class SchedulerSolver:
     def __init__(self, kb: KnowledgeBase, clases_pendientes_inicial: List[ClasePendiente]):
-        self.kb = kb  # La Base de Conocimiento
-        self.clases_pendientes = clases_pendientes_inicial # La lista de tareas a realizar (Estado Inicial)
+        self.kb = kb  
+        # Usamos una copia de la lista inicial
+        self.clases_pendientes = clases_pendientes_inicial 
         
-        # El horario actual, que se construye recursivamente (El 'Plan' parcial)
         self.horario_actual: List[AsignacionFinal] = [] 
         
-        # Estructuras de apoyo para verificar choques rápidamente (Postcondición)
-        self.slots_ocupados_salon = defaultdict(lambda: defaultdict(str)) # [dia][bloque] = salon_id
+        # Estructuras de apoyo para verificar choques rápidamente (no es la única verificación)
+        self.slots_ocupados_salon = defaultdict(lambda: defaultdict(str)) 
         self.slots_ocupados_profesor = defaultdict(lambda: defaultdict(str))
         self.slots_ocupados_grupo = defaultdict(lambda: defaultdict(str))
         
@@ -29,26 +28,62 @@ class SchedulerSolver:
         self.mejor_horario = None
         self.mejor_puntaje = float('inf')
 
+    # --- Funciones Auxiliares de Tiempo ---
+    
+    def _hora_a_minutos(self, hora_str: str) -> int:
+        """Convierte 'HH:MM' a minutos totales desde medianoche."""
+        try:
+            h, m = map(int, hora_str.split(':'))
+            return h * 60 + m
+        except ValueError:
+            return 0 
+
+    def _calcular_duracion_bloque(self, bloque: str) -> float:
+        """Calcula la duración en horas a partir del formato 'HH:MM-HH:MM'."""
+        try:
+            inicio_str, fin_str = bloque.split('-')
+            inicio_min = self._hora_a_minutos(inicio_str)
+            fin_min = self._hora_a_minutos(fin_str)
+            return (fin_min - inicio_min) / 60  # Duración en horas
+        except:
+            return 0.0 
+
+    def _get_entidad(self, entidad_type: str, id_key: str) -> Optional[any]:
+        """Función auxiliar para obtener entidades de la KB de forma segura."""
+        if entidad_type == 'materia':
+            return self.kb.materias.get(id_key)
+        elif entidad_type == 'grupo':
+            return self.kb.grupos.get(id_key)
+        elif entidad_type == 'profesor':
+            return self.kb.profesores.get(id_key)
+        elif entidad_type == 'aula':
+            return self.kb.aulas.get(id_key)
+        return None
+
+
     # --- Lógica de Búsqueda y Backtracking ---
-        
+    
     def planificar_horario(self) -> Optional[List[AsignacionFinal]]:
         
         # 1. ESTADO FINAL (Condición de parada de la recursión: la lista está vacía)
         if not self.clases_pendientes:
-            # Lógica de optimización: calcular el puntaje y guardar self.mejor_horario
             return self._guardar_mejor_solucion() 
 
-        # Tomamos la primera tarea pendiente (Estrategia de Búsqueda: Mínimo Restante)
+        # Tomamos la primera tarea pendiente (Estrategia: Mínimo Restante/Más Restrictivo)
         clase_a_asignar = self.clases_pendientes[0] 
         
         # Generar opciones de asignación para UN solo bloque de tiempo
         posibles_opciones = self._generar_opciones(clase_a_asignar)
         
-        # 2. Iterar y Backtrack
+        # Ordenamos las opciones (Heurística: intentar primero las mejores)
+        # Aquí puedes usar la función de puntaje si quieres ordenar por Soft Constraints
+        random.shuffle(posibles_opciones) # Simplificación: Desordenar para evitar ciclos infinitos.
+        
+        # Iterar y Backtrack
         for opcion in posibles_opciones:
             
-            # VERIFICACIÓN (Precondición: Reglas Duras)
-            if self._intentar_asignacion(opcion):
+            # 2. VERIFICACIÓN (Antecedente / Precondición)
+            if es_asignacion_valida(self.kb, self.horario_actual, opcion):
                 
                 # --- ACCIÓN Y AVANCE ---
                 
@@ -56,72 +91,133 @@ class SchedulerSolver:
                 self._aplicar_asignacion(opcion) 
                 
                 # 2b. Reducir las horas restantes (ESTADO ACTUALIZADO)
-                clase_a_asignar.horas_restantes -= opcion['duracion_bloque'] # Asume que la opción tiene la duración
+                duracion = opcion['duracion_bloque']
+                clase_a_asignar.horas_restantes -= duracion
                 
                 # 2c. Reorganizar la lista (mover la clase si ya terminó, o dejarla al inicio)
                 self._reorganizar_clases_pendientes(clase_a_asignar) 
                 
-                # Llamada recursiva (avanzar a la siguiente tarea o seguir con la misma si quedan horas)
+                # Llamada recursiva 
                 resultado = self.planificar_horario()
                 
                 # --- BACKTRACKING ---
                 
-                # 3a. Deshacer la asignación (eliminar del horario y desmarcar slots)
-                self._deshacer_asignacion(opcion) 
+                # 3a. Revertir la reorganización (mover la clase de vuelta si fue necesario)
+                self._revertir_reorganizacion(clase_a_asignar)
                 
                 # 3b. Sumar las horas de vuelta (REVERTIR ESTADO)
-                clase_a_asignar.horas_restantes += opcion['duracion_bloque'] 
+                clase_a_asignar.horas_restantes += duracion
                 
-                # 3c. Revertir la reorganización
-                self._revertir_reorganizacion(clase_a_asignar)
+                # 3c. Deshacer la asignación (eliminar del horario y desmarcar slots)
+                self._deshacer_asignacion(opcion)
 
-        return None # No se encontró solución en este camino
-    # --- Funciones Auxiliares ---
+                # Si buscas solo una solución, descomenta esto:
+                # if resultado:
+                #    return resultado 
+
+        return None # Indica que falló en este nivel (backtracking implícito)
+
+
+    # --- Optimización y Generación ---
     
     def _generar_opciones(self, clase_pendiente: ClasePendiente) -> List[AsignacionFinal]:
-        """Genera una lista de todas las combinaciones (Profesor, Aula, Slot) válidas para la clase."""
+        """
+        Genera opciones de asignación aplicando filtros heurísticos (Poda) para reducir
+        el espacio de búsqueda drásticamente.
+        """
         opciones = []
         
-        # Lógica simplificada: Iterar sobre profesores, aulas y slots de tiempo
-        
-        # 1. Definir los profesores posibles (usando PROFES_POR_MATERIA)
-        materia_nombre = self.kb.materias.get(clase_pendiente.id_materia).nombre
+        materia: Materia = self._get_entidad('materia', clase_pendiente.id_materia)
+        grupo: Grupo = self._get_entidad('grupo', clase_pendiente.id_grupo)
+
+        if not materia or not grupo: return []
+
+        materia_nombre = materia.nombre
         profes_posibles = self.kb.profes_por_materia.get(materia_nombre, [])
         
-        # Aquí se necesita una lógica más avanzada para el tipo de slot (M-J, L-M-V, etc.)
-        # Simplificación: Usar todos los slots para generar opciones
+        # Heurística 1: Definir patrón de tiempo (Asumimos M-J para 2h/bloque y L-M-V para 1.5h/bloque)
+        patron = 'M-J' if materia.horas_semana == 4 else 'L-M-V'
         
         for id_prof, profesor in self.kb.profesores.items():
             if profesor.nombre in profes_posibles:
+                
                 for id_aula, aula in self.kb.aulas.items():
+                    # FILTRO 1: Tipo de Aula (PODA)
+                    # Si requiere LAB/COMPUTO, descartar Aulas NORMALES
+                    if materia.tipo in ['LAB', 'COMPUTO', 'MIXTA'] and aula.tipo not in ['LAB', 'COMPUTO']:
+                        continue
+                        
+                    # FILTRO 2: Capacidad (PODA, aunque la regla dura lo hace, pre-filtrar ayuda)
+                    if aula.capacidad < grupo.alumnos:
+                        continue
+
                     for slot in self.kb.slots_tiempo:
-                        # Se debe construir el diccionario de asignación con la información de ID y nombre
+                        
+                        # FILTRO 3: Patrón y Día (PODA)
+                        if slot.dia not in self.kb.patrones_info.get(patron, {}).get('dias', []):
+                            continue
+                            
+                        # FILTRO 4: Disponibilidad del Profesor (PODA)
+                        if slot.bloque_tiempo in profesor.bloques_no_disponibles:
+                             continue
+
+                        duracion_horas = self._calcular_duracion_bloque(slot.bloque_tiempo)
+
                         opcion = {
                             'id_materia': clase_pendiente.id_materia,
                             'materia': materia_nombre,
                             'id_grupo': clase_pendiente.id_grupo,
-                            'grupo': clase_pendiente.id_grupo, 
+                            'grupo': grupo.nombre, 
                             'id_profesor': id_prof,
                             'profesor': profesor.nombre,
                             'id_aula': id_aula,
                             'salon': aula.nombre,
                             'dia': slot.dia,
                             'bloque': slot.bloque_tiempo,
-                            # Se necesitan el turno y el patrón, que deben estar disponibles en el modelo de Grupo o Materia
-                            'turno': 'M', # <--- Asumir o obtener de la KB
-                            'patron': 'M-J' # <--- Asumir o obtener de la KB
+                            'duracion_bloque': duracion_horas,
+                            'turno': 'M' if slot.bloque_tiempo.startswith('0') else 'V',
+                            'patron': patron 
                         }
                         opciones.append(opcion)
 
-        # Opcional: Ordenar las opciones para mejorar la velocidad de búsqueda
-        # random.shuffle(opciones) 
-        
         return opciones
 
-    def _intentar_asignacion(self, opcion: AsignacionFinal) -> bool:
-        """Verifica todas las reglas duras."""
-        # Nota: La función 'es_asignacion_valida' en rules.py requiere el 'horario_actual' y la KB
-        return es_asignacion_valida(self.kb, self.horario_actual, opcion)
+    # --- Gestión del Estado (Reorganización de Pendientes) ---
+    
+    def _reorganizar_clases_pendientes(self, clase_a_asignar: ClasePendiente):
+        """Mueve la clase al final si quedan horas, o la elimina si las horas restantes son <= 0."""
+        try:
+            current_index = self.clases_pendientes.index(clase_a_asignar)
+        except ValueError:
+            return
+
+        if clase_a_asignar.horas_restantes <= 0:
+            # Tarea COMPLETADA: Eliminar permanentemente.
+            self.clases_pendientes.pop(current_index)
+            # Para la reversión, guardamos la clase eliminada temporalmente.
+            setattr(clase_a_asignar, '_was_removed', True)
+        else:
+            # Tarea NO COMPLETADA: Moverla al final.
+            if current_index < len(self.clases_pendientes) - 1:
+                self.clases_pendientes.pop(current_index)
+                self.clases_pendientes.append(clase_a_asignar)
+                setattr(clase_a_asignar, '_was_removed', False)
+    
+    def _revertir_reorganizacion(self, clase_a_revertir: ClasePendiente):
+        """Revierte el movimiento y la eliminación."""
+        
+        # 1. Si fue eliminada, reinsertarla al principio.
+        if hasattr(clase_a_revertir, '_was_removed') and getattr(clase_a_revertir, '_was_removed'):
+            self.clases_pendientes.insert(0, clase_a_revertir)
+            delattr(clase_a_revertir, '_was_removed')
+            
+        # 2. Si fue movida al final, moverla de vuelta al inicio para ser la siguiente tarea.
+        elif clase_a_revertir in self.clases_pendientes and self.clases_pendientes[-1] == clase_a_revertir:
+            self.clases_pendientes.pop()
+            self.clases_pendientes.insert(0, clase_a_revertir)
+
+
+    # --- Aplicación y Reversión de Asignación ---
 
     def _aplicar_asignacion(self, opcion: AsignacionFinal):
         """Añade la asignación al horario y actualiza las estructuras de choque."""
@@ -137,13 +233,24 @@ class SchedulerSolver:
     def _deshacer_asignacion(self, opcion: AsignacionFinal):
         """Revierte la asignación (Backtracking)."""
         if self.horario_actual and self.horario_actual[-1] == opcion:
-            self.horario_actual.pop() # Elimina la última asignación
+            self.horario_actual.pop() 
             
             # Deshacer la actualización de las estructuras de choque
             dia_bloque = (opcion['dia'], opcion['bloque'])
-            if self.slots_ocupados_salon.get(dia_bloque) == opcion['id_aula']:
-                del self.slots_ocupados_salon[dia_bloque]
-            # Repetir para profesor y grupo
+            self.slots_ocupados_salon.pop(dia_bloque, None)
+            self.slots_ocupados_profesor.pop(dia_bloque, None)
+            self.slots_ocupados_grupo.pop(dia_bloque, None)
+
+
+    def _guardar_mejor_solucion(self) -> List[AsignacionFinal]:
+        """Calcula el puntaje y guarda la mejor solución encontrada hasta ahora."""
+        puntaje_actual = calcular_puntaje_horario(self.horario_actual, self.kb)
+        
+        if puntaje_actual < self.mejor_puntaje:
+            self.mejor_puntaje = puntaje_actual
+            self.mejor_horario = self.horario_actual.copy() 
+            
+        return self.mejor_horario 
 
     # --- Método de Lanzamiento ---
     
@@ -151,8 +258,10 @@ class SchedulerSolver:
         """Lanza el proceso de planificación y retorna el mejor horario."""
         print(f"Iniciando búsqueda de horario para {len(self.clases_pendientes)} tareas...")
         
-        # Llama a la función recursiva desde el inicio (índice 0)
-        self.planificar_horario(0) 
+        # Intentamos ordenar las tareas pendientes antes de la búsqueda (heurística de variables)
+        # Aquí puedes priorizar las materias con más restricciones (LAB, más horas)
+        
+        self.planificar_horario() 
         
         if self.mejor_horario:
             print(f"¡Solución encontrada! Mejor puntaje (calidad): {self.mejor_puntaje}")
@@ -160,48 +269,3 @@ class SchedulerSolver:
             print("No se encontró una solución válida que cumpla todas las Reglas Duras.")
             
         return self.mejor_horario
-
-# ============================================================
-# 2. IMPLEMENTACIÓN DE PRUEBA (Debe moverse a src/main.py)
-# ============================================================
-
-if __name__ == "__main__":
-    # NOTA: Este bloque debe moverse a src/main.py. Solo está aquí para prueba.
-    
-    # Se necesita importar la KB y los Hechos
-    from .models import KnowledgeBase, Materia, Grupo, Aula, Profesor, ClasePendiente, SlotTiempo
-    
-    # --- SIMULACIÓN DE DATOS (Necesitas que tu CSV funcione para tener datos reales) ---
-    
-    # Creamos una KB con datos de prueba MÍNIMOS para que no falle al iniciar
-    kb_simulada = KnowledgeBase(csv_path="ruta_invalida_solo_para_simulacion.csv")
-    
-    # Rellenar la KB simulada con un profesor, un aula, una materia y un grupo de prueba
-    kb_simulada.profesores['P001'] = Profesor('P001', 'PROF_A', ['ALGEBRA'], [], 20)
-    kb_simulada.aulas['A214'] = Aula('A214', 'A214', 50, 'NORMAL')
-    kb_simulada.grupos['G101'] = Grupo('G101', 1, 40)
-    kb_simulada.materias['M101'] = Materia('M101', 'ALGEBRA', 1, 4, 'TEORIA')
-    kb_simulada.salones_disponibles.append('A214')
-    kb_simulada.profes_por_materia['ALGEBRA'] = ['PROF_A']
-    
-    # Crear slots de tiempo MÍNIMOS para que la búsqueda no sea infinita
-    kb_simulada.slots_tiempo = [
-        SlotTiempo(dia='Martes', bloque_tiempo='09:00-11:00'),
-        SlotTiempo(dia='Jueves', bloque_tiempo='09:00-11:00')
-    ]
-
-    # Estado Inicial: 1 sola clase pendiente (una tarea)
-    clases_pendientes_test = [
-        ClasePendiente(id_materia='M101', id_grupo='G101', horas_restantes=4)
-    ]
-
-    # --- Lanzar Solver ---
-    # scheduler = SchedulerSolver(kb_simulada, clases_pendientes_test)
-    # resultado_final = scheduler.run()
-
-    # if resultado_final:
-    #     print("\nResultado:")
-    #     for asignacion in resultado_final:
-    #         print(f"- {asignacion['materia']} con {asignacion['profesor']} en {asignacion['salon']} el {asignacion['dia']} a las {asignacion['bloque']}")
-    # else:
-    #     print("No se pudo generar el horario de prueba.")
