@@ -1,0 +1,48 @@
+# =======================================================
+# 1. ENTORNO VIRTUAL Y DEPENDENCIAS (CRUCIAL)
+# =======================================================
+# Ignorar el entorno virtual de Python
+venv/
+.venv/
+
+# Archivos de caché de pip, build artifacts, y archivos de distribución
+*.egg-info/
+dist/
+build/
+
+# =======================================================
+# 2. CACHÉ DE PYTHON
+# =======================================================
+# Ignorar la carpeta de caché de compilación de Python
+__pycache__/
+# Archivos de código compilado
+*.pyc
+*.pyo
+*.pyd
+
+# =======================================================
+# 3. DATOS GENERADOS Y DE SALIDA
+# =======================================================
+# Tu archivo de datos de entrada DEBE estar en 'data/base_conocimiento.csv',
+# pero los archivos de salida generados por el programa deben ignorarse.
+
+# Archivos de salida del horario (si decides guardarlos)
+/output/
+horario_final.csv
+horario_final.xlsx
+
+# Archivos de datos sensibles o temporales que no deben subirse
+.env
+.DS_Store # Mac OS
+
+# =======================================================
+# 4. CONFIGURACIÓN DE EDITORES / IDES
+# =======================================================
+# Visual Studio Code
+.vscode/
+
+# PyCharm / IntelliJ
+.idea/
+
+# Jupyter Notebook Checkpoints (si los usas para pruebas)
+.ipynb_checkpoints/
